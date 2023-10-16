@@ -9,64 +9,63 @@ from mher.common.monitor import Monitor
 from mher.envs.multi_world_wrapper import PointGoalWrapper, SawyerGoalWrapper, ReacherGoalWrapper
 
 DEFAULT_ENV_PARAMS = {
-    'Point2DLargeEnv-v1':{
-         'n_cycles':1,
-         'batch_size':64,
-         'n_batches': 5,
-         'n_test_rollouts': 100,
-         'random_init':20,  
-         'dynamic_init':100,
-         'rollout_batch_size': 1,
-    },
-    'Point2D-FourRoom-v1':{
-        'n_cycles':1,
-        'batch_size':64,
+    'Point2DLargeEnv-v1': {
+        'n_cycles': 1,
+        'batch_size': 64,
         'n_batches': 5,
         'n_test_rollouts': 100,
-        'random_init':20,
-        'dynamic_init':100,
+        'random_init': 20,
+        'dynamic_init': 100,
+        'rollout_batch_size': 1,
+    },
+    'Point2D-FourRoom-v1': {
+        'n_cycles': 1,
+        'batch_size': 64,
+        'n_batches': 5,
+        'n_test_rollouts': 100,
+        'random_init': 20,
+        'dynamic_init': 100,
         'rollout_batch_size': 1,
     },
     'FetchReach-v1': {
-        'n_cycles': 5,  
-        'batch_size':64,
+        'n_cycles': 5,
+        'batch_size': 64,
         'n_batches': 5,
         'n_test_rollouts': 100,
-        'random_init':20,
-        'dynamic_init':100,
+        'random_init': 20,
+        'dynamic_init': 100,
         'rollout_batch_size': 1,
     },
-    'SawyerReachXYZEnv-v1':{
-        'n_cycles':5,
-        'batch_size':64,
+    'SawyerReachXYZEnv-v1': {
+        'n_cycles': 5,
+        'batch_size': 64,
         'n_batches': 5,
         'n_test_rollouts': 100,
-        'random_init':20,
-        'dynamic_init':100,
+        'random_init': 20,
+        'dynamic_init': 100,
         'rollout_batch_size': 1,
     },
     'Reacher-v2': {
-        'n_cycles': 15,  
-        'batch_size':64,
+        'n_cycles': 15,
+        'batch_size': 64,
         'n_batches': 5,
         'n_test_rollouts': 100,
-        'random_init':20,
-        'dynamic_init':100,
+        'random_init': 20,
+        'dynamic_init': 100,
         'rollout_batch_size': 1,
     },
     'SawyerDoor-v0': {
-        'n_cycles': 30,  
-        'batch_size':64,
+        'n_cycles': 30,
+        'batch_size': 64,
         'n_batches': 5,
         'n_test_rollouts': 100,
-        'random_init':20,
-        'dynamic_init':100,
+        'random_init': 20,
+        'dynamic_init': 100,
         'rollout_batch_size': 1,
     },
 }
 
-
-DEFAULT_PARAMS = {  
+DEFAULT_PARAMS = {
     # env
     'max_u': 1.,  # max absolute value of actions on different coordinates
     # ddpg
@@ -76,7 +75,7 @@ DEFAULT_PARAMS = {
     'Q_lr': 0.001,  # critic learning rate
     'pi_lr': 0.001,  # actor learning rate
     'buffer_size': int(1E6),  # for experience replay
-    'polyak': 0.9,  #polyak averaging coefficient
+    'polyak': 0.9,  # polyak averaging coefficient
     'action_l2': 1.0,  # quadratic penalty on actions (before rescaling by max_u)
     'clip_obs': 200.,
     'scope': 'ddpg',  # can be tweaked for testing
@@ -99,29 +98,28 @@ DEFAULT_PARAMS = {
     'norm_clip': 5,  # normalized observations are cropped to this values
 
     # random init episode
-    'random_init':20, 
+    'random_init': 20,
 
     # n step for experience replay
-    'n_step':3,
+    'n_step': 3,
 
     # model-based her
-    'use_dynamic_nstep':False,  
-    'alpha':3,
+    'use_dynamic_nstep': False,
+    'alpha': 3,
     'mb_relabeling_ratio': 0.8,
-    'no_mb_relabel':False,
-    'no_mgsl':False,
-    'dynamic_batchsize':512,  # warm up the dynamic model
-    'dynamic_init':100,
-    
+    'no_mb_relabel': False,
+    'no_mgsl': False,
+    'dynamic_batchsize': 512,  # warm up the dynamic model
+    'dynamic_init': 100,
+
     # mode
     'use_supervised': False,
-    'use_mve':False,
-    'use_mbpo':False,
+    'use_mve': False,
+    'use_mbpo': False,
 
     # if do not use her
-    'no_her':False    # used for DDPG 
+    'no_her': False  # used for DDPG
 }
-
 
 CACHED_ENVS = {}
 
@@ -136,6 +134,7 @@ def cached_make_env(make_env):
         env = make_env()
         CACHED_ENVS[make_env] = env
     return CACHED_ENVS[make_env]
+
 
 def prepare_mode(kwargs):
     # set default as false
@@ -169,9 +168,10 @@ def prepare_params(kwargs):
     # DDPG params
     ddpg_params = dict()
     env_name = kwargs['env_name']
+
     def make_env(subrank=None):
         try:
-            env = gym.make(env_name, rewrad_type='sparse') 
+            env = gym.make(env_name, rewrad_type='sparse')
         except:
             logger.log('Can not make sparse reward environment')
             env = gym.make(env_name)
@@ -181,7 +181,7 @@ def prepare_params(kwargs):
         elif env_name.startswith('Point2D'):
             env = PointGoalWrapper(env)
             env.env._max_episode_steps = 100
-        elif env_name.startswith('Sawyer'): 
+        elif env_name.startswith('Sawyer'):
             env = SawyerGoalWrapper(env)
         elif env_name.startswith('Reacher'):
             env = ReacherGoalWrapper(env)
@@ -193,15 +193,16 @@ def prepare_params(kwargs):
             except ImportError:
                 MPI = None
                 mpi_rank = 0
-                logger.warn('Running with a single MPI process. This should work, but the results may differ from the ones publshed in Plappert et al.')
+                logger.warn(
+                    'Running with a single MPI process. This should work, but the results may differ from the ones publshed in Plappert et al.')
 
             if hasattr(env, '_max_episode_steps'):
                 max_episode_steps = env._max_episode_steps
             else:
-                max_episode_steps = default_max_episode_steps # otherwise use defaulit max episode steps
-            env =  Monitor(env,
-                           os.path.join(logger.get_dir(), str(mpi_rank) + '.' + str(subrank)),
-                           allow_early_resets=True)
+                max_episode_steps = default_max_episode_steps  # otherwise use defaulit max episode steps
+            env = Monitor(env,
+                          os.path.join(logger.get_dir(), str(mpi_rank) + '.' + str(subrank)),
+                          allow_early_resets=True)
             # hack to re-expose _max_episode_steps (ideally should replace reliance on it downstream)
             env = gym.wrappers.TimeLimit(env, max_episode_steps=max_episode_steps)
         return env
@@ -219,15 +220,15 @@ def prepare_params(kwargs):
         kwargs['pi_lr'] = kwargs['lr']
         kwargs['Q_lr'] = kwargs['lr']
         del kwargs['lr']
-    for name in ['buffer_size', 'hidden', 'layers','network_class','polyak','batch_size', 
-                 'Q_lr', 'pi_lr', 'norm_eps', 'norm_clip', 'max_u','action_l2', 'clip_obs', 
-                 'scope', 'relative_goals', 'n_step', 'use_dynamic_nstep', 
+    for name in ['buffer_size', 'hidden', 'layers', 'network_class', 'polyak', 'batch_size',
+                 'Q_lr', 'pi_lr', 'norm_eps', 'norm_clip', 'max_u', 'action_l2', 'clip_obs',
+                 'scope', 'relative_goals', 'n_step', 'use_dynamic_nstep',
                  'alpha', 'dynamic_init', 'dynamic_batchsize', 'mb_relabeling_ratio',
-                 'no_mb_relabel', 'no_mgsl','use_supervised', 'use_mve', 'use_mbpo']:
+                 'no_mb_relabel', 'no_mgsl', 'use_supervised', 'use_mve', 'use_mbpo']:
         ddpg_params[name] = kwargs[name]
         kwargs['_' + name] = kwargs[name]
         del kwargs[name]
-    
+
     kwargs['ddpg_params'] = ddpg_params
     return kwargs
 
@@ -248,7 +249,7 @@ def configure_her(params):
     # Prepare configuration for HER.
     her_params = {
         'reward_fun': reward_fun,
-        'obs_to_goal_fun':obs_to_goal,
+        'obs_to_goal_fun': obs_to_goal,
         'no_her': params['no_her']
     }
     for name in ['replay_strategy', 'replay_k']:
@@ -256,22 +257,24 @@ def configure_her(params):
         params['_' + name] = her_params[name]
         del params[name]
 
-    sample_her, sample_nstep_dynamic_her, sample_nstep_supervised_her,\
-            sample_mve, sample_mbpo = make_sample_her_transitions(**her_params)
+    sample_her, sample_nstep_dynamic_her, sample_nstep_supervised_her, \
+        sample_mve, sample_mbpo = make_sample_her_transitions(**her_params)
     random_sampler = make_random_sample(her_params['reward_fun'])
     samplers = {
         'her': sample_her,
         'random': random_sampler,
-        'dynamic':sample_nstep_dynamic_her,
-        'supervised':sample_nstep_supervised_her,
-        'mve':sample_mve,
+        'dynamic': sample_nstep_dynamic_her,
+        'supervised': sample_nstep_supervised_her,
+        'mve': sample_mve,
         'mbpo': sample_mbpo,
     }
     return samplers, reward_fun
 
+
 def simple_goal_subtract(a, b):
     assert a.shape == b.shape
     return a - b
+
 
 def configure_ddpg(dims, params, reuse=False, use_mpi=True, clip_return=True):
     samplers, reward_fun = configure_her(params)
@@ -285,23 +288,25 @@ def configure_ddpg(dims, params, reuse=False, use_mpi=True, clip_return=True):
     env.reset()
     ddpg_params.update({'input_dims': input_dims,  # agent takes an input observations
                         'T': params['T'],
+                        'n': params['nt'],
+                        'method': params['method'],
                         'clip_pos_returns': True,  # clip positive returns
                         'clip_return': (1. / (1. - params['gamma'])) if clip_return else np.inf,  # max abs of return 
                         'rollout_batch_size': rollout_batch_size,
                         'subtract_goals': simple_goal_subtract,
                         'sample_transitions': samplers['her'],
-                        'random_sampler':samplers['random'],
-                        'nstep_dynamic_sampler':samplers['dynamic'],
-                        'nstep_supervised_sampler':samplers['supervised'],
-                        'mve_sampler':samplers['mve'],
-                        'mbpo_sampler':samplers['mbpo'],
+                        'random_sampler': samplers['random'],
+                        'nstep_dynamic_sampler': samplers['dynamic'],
+                        'nstep_supervised_sampler': samplers['supervised'],
+                        'mve_sampler': samplers['mve'],
+                        'mbpo_sampler': samplers['mbpo'],
                         'gamma': params['gamma'],
                         })
     ddpg_params['info'] = {
         'env_name': params['env_name'],
-        'reward_fun':reward_fun
-    } 
-    policy = DDPG(reuse=reuse, **ddpg_params, use_mpi=use_mpi)  
+        'reward_fun': reward_fun
+    }
+    policy = DDPG(reuse=reuse, **ddpg_params, use_mpi=use_mpi)
     return policy
 
 

@@ -22,11 +22,11 @@ def dims_to_shapes(input_dims):
 class DDPG(object):
     @store_args
     def __init__(self, input_dims, buffer_size, hidden, layers, network_class, polyak, batch_size,
-                 Q_lr, pi_lr, norm_eps, norm_clip, max_u, action_l2, clip_obs, scope, T,
+                 Q_lr, pi_lr, norm_eps, norm_clip, max_u, action_l2, clip_obs, scope, T, method, n,
                  rollout_batch_size, subtract_goals, relative_goals, clip_pos_returns, clip_return,
-                 sample_transitions, random_sampler, gamma,  n_step, use_dynamic_nstep, 
-                 nstep_dynamic_sampler, mb_relabeling_ratio,dynamic_batchsize, dynamic_init, 
-                 alpha, no_mb_relabel, no_mgsl, nstep_supervised_sampler, use_supervised, 
+                 sample_transitions, random_sampler, gamma, n_step, use_dynamic_nstep,
+                 nstep_dynamic_sampler, mb_relabeling_ratio, dynamic_batchsize, dynamic_init,
+                 alpha, no_mb_relabel, no_mgsl, nstep_supervised_sampler, use_supervised,
                  use_mve, mve_sampler, use_mbpo, mbpo_sampler, reuse=False, **kwargs):
         """Implementation of DDPG agent that is used in combination with Hindsight Experience Replay (HER).
         """
@@ -46,10 +46,12 @@ class DDPG(object):
                 continue
             stage_shapes[key] = (None, *input_shapes[key])
         for key in ['o', 'g']:
-            stage_shapes[key + '_2'] = stage_shapes[key]
+            for i in range(2, (n + 1)):
+                stage_shapes[key + f'_{i}'] = stage_shapes[key]
+
         stage_shapes['r'] = (None,)
         if self.use_dynamic_nstep:
-            stage_shapes['idxs'] = (None, )
+            stage_shapes['idxs'] = (None,)
         self.stage_shapes = stage_shapes
 
         # Create network.
@@ -63,68 +65,69 @@ class DDPG(object):
             self._create_network(reuse=reuse)
 
         # Configure the replay buffer.
-        buffer_shapes = {key: (self.T-1 if key != 'o' else self.T, *input_shapes[key]) for key, val in input_shapes.items()}
+        buffer_shapes = {key: (self.T - 1 if key != 'o' else self.T, *input_shapes[key]) for key, val in
+                         input_shapes.items()}
         buffer_shapes['g'] = (buffer_shapes['g'][0], self.dimg)
         buffer_shapes['ag'] = (self.T, self.dimg)
-        buffer_size = (self.buffer_size // self.rollout_batch_size) * self.rollout_batch_size # buffer_size % rollout_batch_size should be zero
+        buffer_size = (
+                                  self.buffer_size // self.rollout_batch_size) * self.rollout_batch_size  # buffer_size % rollout_batch_size should be zero
 
         if self.no_mgsl or self.no_mb_relabel:
             # no_mgsl set alpha=0, no_mb_relabel use auxilary task in her_sample rather than mgsl loss
             self.alpha = 0
             if self.no_mgsl and self.no_mb_relabel:
-                raise NotImplementedError('Please use DDPG (--noher Ture)instead.')                
+                raise NotImplementedError('Please use DDPG (--noher Ture)instead.')
 
         if self.use_dynamic_nstep:
             sampler = self.nstep_dynamic_sampler
             info = {
-                'nstep':self.n_step,
-                'gamma':self.gamma,
-                'get_Q_pi':self.get_Q_pi,
-                'dynamic_model':self.dynamic_model,
-                'action_fun':self.action_only,
-                'train_policy':self.train_policy,
-                'get_rate':self.get_process,
-                'alpha':self.alpha,
+                'nstep': self.n_step,
+                'gamma': self.gamma,
+                'get_Q_pi': self.get_Q_pi,
+                'dynamic_model': self.dynamic_model,
+                'action_fun': self.action_only,
+                'train_policy': self.train_policy,
+                'get_rate': self.get_process,
+                'alpha': self.alpha,
                 'mb_relabeling_ratio': self.mb_relabeling_ratio,
-                'no_mb_relabel':self.no_mb_relabel,
-                'no_mgsl':self.no_mgsl,
-                'use_dynamic_nstep':True
+                'no_mb_relabel': self.no_mb_relabel,
+                'no_mgsl': self.no_mgsl,
+                'use_dynamic_nstep': True
             }
         elif self.use_supervised:
             sampler = self.nstep_supervised_sampler
             info = {
-                'use_supervised':True,
-                'train_policy':self.train_policy
+                'use_supervised': True,
+                'train_policy': self.train_policy
             }
         elif self.use_mve:
             sampler = self.mve_sampler
             info = {
-                'nstep':self.n_step,
-                'gamma':self.gamma,
-                'get_Q_pi':self.get_Q_pi,
-                'dynamic_model':self.dynamic_model,
-                'action_fun':self.action_only,
+                'nstep': self.n_step,
+                'gamma': self.gamma,
+                'get_Q_pi': self.get_Q_pi,
+                'dynamic_model': self.dynamic_model,
+                'action_fun': self.action_only,
             }
         elif self.use_mbpo:
             sampler = self.mbpo_sampler
             model_buffer = SimpleReplayBuffer(buffer_size, self.dimo, self.dimg, self.dimu)
             info = {
-                'nstep':self.n_step,
-                'dynamic_model':self.dynamic_model,
+                'nstep': self.n_step,
+                'dynamic_model': self.dynamic_model,
                 'action_fun': self.action_only,
-                'model_buffer':model_buffer,
+                'model_buffer': model_buffer,
             }
-        else: 
+        else:
             sampler = self.sample_transitions
             info = {}
-        
+
         self.buffer = ReplayBuffer(buffer_shapes, buffer_size, self.T, sampler, self.sample_transitions, info)
         self.process_rate = 0
-        
 
     def set_process(self, rate):
         self.process_rate = rate
-    
+
     def get_process(self):
         return self.process_rate
 
@@ -150,7 +153,7 @@ class DDPG(object):
         o = np.clip(o, -self.clip_obs, self.clip_obs)
         g = np.clip(g, -self.clip_obs, self.clip_obs)
 
-        policy = self.target  #self.target if use_target_net else
+        policy = self.target  # self.target if use_target_net else
         action = self.sess.run(policy.pi_tf, feed_dict={
             policy.o_tf: o.reshape(-1, self.dimo),
             policy.g_tf: g.reshape(-1, self.dimg)
@@ -178,7 +181,8 @@ class DDPG(object):
         noise = noise_eps * self.max_u * np.random.randn(*u.shape)  # gaussian noise
         u += noise
         u = np.clip(u, -self.max_u, self.max_u)
-        u += np.random.binomial(1, random_eps, u.shape[0]).reshape(-1, 1) * (self._random_action(u.shape[0]) - u)  # eps-greedy
+        u += np.random.binomial(1, random_eps, u.shape[0]).reshape(-1, 1) * (
+                    self._random_action(u.shape[0]) - u)  # eps-greedy
         if u.shape[0] == 1:
             u = u[0]
         u = u.copy()
@@ -188,7 +192,7 @@ class DDPG(object):
             return ret[0]
         else:
             return ret
-    
+
     def get_Q(self, o, g, u):
         o = np.clip(o, -self.clip_obs, self.clip_obs)
         g = np.clip(g, -self.clip_obs, self.clip_obs)
@@ -208,7 +212,7 @@ class DDPG(object):
         policy = self.target
         feed = {
             policy.o_tf: o.reshape(-1, self.dimo),
-            policy.g_tf:g.reshape(-1, self.dimg)
+            policy.g_tf: g.reshape(-1, self.dimg)
         }
         ret = self.sess.run(policy.Q_pi_tf, feed_dict=feed)
         return ret
@@ -220,29 +224,30 @@ class DDPG(object):
         feed = {
             policy.o_tf: o.reshape(-1, self.dimo),
             policy.g_tf: g.reshape(-1, self.dimg),
-            policy.u_tf: np.zeros((o.size // self.dimo, self.dimu), dtype=np.float32) #??
+            policy.u_tf: np.zeros((o.size // self.dimo, self.dimu), dtype=np.float32)  # ??
         }
 
         ret = self.sess.run(policy.Q_tf, feed_dict=feed)
         return ret
 
-    def store_episode(self, episode_batch, update_stats=True): #init=False
+    def store_episode(self, episode_batch, update_stats=True):  # init=False
         """
         episode_batch: array of batch_size x (T or T+1) x dim_key 'o' is of size T+1, others are of size T
         """
         self.buffer.store_episode(episode_batch)
         if update_stats:
             # episode doesn't has key o_2
-            episode_batch['o_2'] = episode_batch['o'][:, 1:, :]
-            episode_batch['ag_2'] = episode_batch['ag'][:, 1:, :]
+            for i in range(2, self.n + 2):
+                episode_batch[f'o_{i}'] = episode_batch['o'][:, i - 1:, :]
+                episode_batch[f'ag_{i}'] = episode_batch['ag'][:, i - 1:, :]
             num_normalizing_transitions = transitions_in_episode_batch(episode_batch)
             # add transitions to normalizer
-            transitions = self.sample_transitions(episode_batch, num_normalizing_transitions)
+            transitions = self.sample_transitions(episode_batch, num_normalizing_transitions, self.n)
 
             o, g, ag = transitions['o'], transitions['g'], transitions['ag']
             transitions['o'], transitions['g'] = self._preprocess_og(o, ag, g)
             # No need to preprocess the o_2 and g_2 since this is only used for stats
-            # training normalizer online 
+            # training normalizer online
             self.o_stats.update(transitions['o'])
             self.g_stats.update(transitions['g'])
             self.o_stats.recompute_stats()
@@ -257,16 +262,16 @@ class DDPG(object):
             feed_dict={
                 self.main.o_tf: o,
                 self.main.g_tf: g,
-                self.main.u_tf : u
+                self.main.u_tf: u
             }
         )
         if not self.use_supervised:
-            self.pi_adam.update(pi_sl_grad, self.pi_lr)  
-            for _ in range(3):  
+            self.pi_adam.update(pi_sl_grad, self.pi_lr)
+            for _ in range(3):
                 self.update_target_net()
         else:
             self.pi_adam.update(pi_sl_grad, self.pi_lr)
-        
+
         return pi_sl_loss
 
     def _sync_optimizers(self):
@@ -275,11 +280,11 @@ class DDPG(object):
 
     def _grads(self):
         # Avoid feed_dict here for performance!
-        critic_loss, actor_loss, Q_grad, pi_grad = self.sess.run([  
+        critic_loss, actor_loss, Q_grad, pi_grad = self.sess.run([
             self.Q_loss_tf,
             self.main.Q_pi_tf,
             self.Q_grad_tf,
-            self.pi_grad_tf,  
+            self.pi_grad_tf,
         ])
         return critic_loss, actor_loss, Q_grad, pi_grad
 
@@ -290,23 +295,27 @@ class DDPG(object):
     def update_dynamic_model(self, init=False):
         times = 2
         if init:
-            times = self.dynamic_init 
+            times = self.dynamic_init
         for _ in range(times):
-            transitions = self.buffer.sample(self.dynamic_batchsize, random=True)
-            loss = self.dynamic_model.update(transitions['o'], transitions['u'], transitions['o_2'])
+            transitions = self.buffer.sample(self.dynamic_batchsize, self.n, random=True)
+            loss = self.dynamic_model.update(transitions['o'], transitions['u'], transitions, self.n)
 
     def sample_batch(self, method='list'):
-        transitions = self.buffer.sample(self.batch_size)   #otherwise only sample from primary buffer
+        transitions = self.buffer.sample(self.batch_size, self.n)  # otherwise only sample from primary buffer
 
-        o, o_2, g = transitions['o'], transitions['o_2'], transitions['g']
-        ag, ag_2 = transitions['ag'], transitions['ag_2']
+        o, g = transitions['o'], transitions['g']
+        ag = transitions['ag']
         transitions['o'], transitions['g'] = self._preprocess_og(o, ag, g)
-        transitions['o_2'], transitions['g_2'] = self._preprocess_og(o_2, ag_2, g)
+        for i in range(2, self.n + 2):
+            transitions[f'o_{i}'], transitions[f'g_{i}'] = self._preprocess_og(transitions[f'o_{i}'],
+                                                                               transitions[f'ag_{i}'], g)
 
         if 'g' in transitions.keys():
             if len(transitions['g'].shape) == 1:
-                transitions['g'] = transitions['g'].reshape(-1,1)
-                transitions['g_2'] = transitions['g_2'].reshape(-1,1)
+                transitions['g'] = transitions['g'].reshape(-1, 1)
+                for i in range(2, self.n + 2):
+                    transitions[f'g_{i}'] = transitions[f'g_{i}'].reshape(-1, 1)
+
         if method == 'list':
             transitions_batch = [transitions[key] for key in self.stage_shapes.keys()]
         else:
@@ -333,7 +342,6 @@ class DDPG(object):
 
     def update_target_net(self):
         self.sess.run(self.update_target_net_op)
-
 
     def clear_buffer(self):
         self.buffer.clear_buffer()
@@ -389,23 +397,24 @@ class DDPG(object):
         # loss functions
         target_Q_pi_tf = self.target.Q_pi_tf
         clip_range = (-self.clip_return, self.clip_return if self.clip_pos_returns else np.inf)
-        if self.use_dynamic_nstep or self.use_mve:   
-            target_tf = tf.clip_by_value(batch_tf['r'] , *clip_range)  # lambda target 
+        if self.use_dynamic_nstep or self.use_mve:
+            target_tf = tf.clip_by_value(batch_tf['r'], *clip_range)  # lambda target
         else:
             target_tf = tf.clip_by_value(batch_tf['r'] + self.gamma * target_Q_pi_tf, *clip_range)
-            
+
         self.Q_loss_tf = tf.reduce_mean(tf.square(tf.stop_gradient(target_tf) - self.main.Q_tf))
 
         self.pi_loss_tf = -tf.reduce_mean(self.main.Q_pi_tf)
         self.pi_loss_tf += self.action_l2 * tf.reduce_mean(tf.square(self.main.pi_tf / self.max_u))
-        self.temp_pi_loss = -tf.reduce_mean(self.main.Q_pi_tf) + self.action_l2 * tf.reduce_mean(tf.square(self.main.pi_tf / self.max_u))
+        self.temp_pi_loss = -tf.reduce_mean(self.main.Q_pi_tf) + self.action_l2 * tf.reduce_mean(
+            tf.square(self.main.pi_tf / self.max_u))
         self.temp_action_loss = self.action_l2 * tf.reduce_mean(tf.square(self.main.pi_tf / self.max_u))
 
         # training policy with supervised learning (GCSL)
-        self.policy_sl_loss = tf.reduce_mean(tf.square(self.main.u_tf - self.main.pi_tf))  
+        self.policy_sl_loss = tf.reduce_mean(tf.square(self.main.u_tf - self.main.pi_tf))
         # merge loss
         if self.use_dynamic_nstep:
-            self.policy_sl_loss_dim = tf.reduce_mean(tf.square(self.main.u_tf - self.main.pi_tf), axis=1)  
+            self.policy_sl_loss_dim = tf.reduce_mean(tf.square(self.main.u_tf - self.main.pi_tf), axis=1)
             self.temp_sl_loss = self.alpha * tf.reduce_mean(batch_tf['idxs'] * self.policy_sl_loss_dim)
             self.pi_loss_tf += self.alpha * tf.reduce_mean(batch_tf['idxs'] * self.policy_sl_loss_dim)
 
@@ -425,7 +434,7 @@ class DDPG(object):
         self.Q_adam = MpiAdam(self._vars('main/Q'), scale_grad_by_procs=False)
         self.pi_adam = MpiAdam(self._vars('main/pi'), scale_grad_by_procs=False)
 
-        self.dynamic_model = EnsembleForwardDynamics(3, self.dimo, self.dimu)
+        self.dynamic_model = EnsembleForwardDynamics(3, self.dimo, self.dimu, self.method, self.n)
         # polyak averaging
         self.main_vars = self._vars('main/Q') + self._vars('main/pi')
         self.target_vars = self._vars('target/Q') + self._vars('target/pi')
@@ -434,7 +443,8 @@ class DDPG(object):
         self.init_target_net_op = list(
             map(lambda v: v[0].assign(v[1]), zip(self.target_vars, self.main_vars)))
         self.update_target_net_op = list(
-            map(lambda v: v[0].assign(self.polyak * v[0] + (1. - self.polyak) * v[1]), zip(self.target_vars, self.main_vars)))
+            map(lambda v: v[0].assign(self.polyak * v[0] + (1. - self.polyak) * v[1]),
+                zip(self.target_vars, self.main_vars)))
 
         # initialize all variables
         tf.variables_initializer(self._global_vars('')).run()
@@ -478,7 +488,7 @@ class DDPG(object):
                 self.__dict__[k] = v
         # load TF variables
         vars = [x for x in self._global_vars('') if 'buffer' not in x.name]
-        assert(len(vars) == len(state["tf"]))
+        assert (len(vars) == len(state["tf"]))
         node = [tf.assign(var, val) for var, val in zip(vars, state["tf"])]
         self.sess.run(node)
 

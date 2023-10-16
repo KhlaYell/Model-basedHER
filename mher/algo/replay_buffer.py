@@ -4,7 +4,7 @@ import numpy as np
 
 
 class ReplayBuffer:
-    def __init__(self, buffer_shapes, size_in_transitions, T, sample_transitions, default_sampler, info=None): 
+    def __init__(self, buffer_shapes, size_in_transitions, T, sample_transitions, default_sampler, info=None):
         """Creates a replay buffer.
 
         Args:
@@ -30,13 +30,13 @@ class ReplayBuffer:
         self.current_size = 0
         self.n_transitions_stored = 0
         self.lock = threading.Lock()
-        
+
     @property
     def full(self):
         with self.lock:
             return self.current_size == self.size
 
-    def sample(self, batch_size, random=False):
+    def sample(self, batch_size, n, random=False):
         """Returns a dict {key: array(batch_size x shapes[key])}
         """
         buffers = {}
@@ -47,15 +47,21 @@ class ReplayBuffer:
                 buffers[key] = self.buffers[key][:self.current_size]
 
         if 'o_2' not in buffers and 'ag_2' not in buffers:
-            buffers['o_2'] = buffers['o'][:, 1:, :]
-            buffers['ag_2'] = buffers['ag'][:, 1:, :]
+            for i in range(2, (n + 2)):
+                buffers[f'o_{i}'] = buffers['o'][:, i - 1:, :]
+                buffers[f'ag_{i}'] = buffers['ag'][:, i - 1:, :]
 
         if random:
-            transitions = self.default_sampler(buffers, batch_size, self.info)
+            transitions = self.default_sampler(buffers, batch_size, n, self.info)
         else:
-            transitions = self.sample_transitions(buffers, batch_size, self.info)
+            transitions = self.sample_transitions(buffers, batch_size, n, self.info)
 
-        for key in (['r', 'o_2', 'ag_2'] + list(self.buffers.keys())):
+        k = []
+        k.append('r')
+        k.append('ag_2')
+        for i in range(2, n + 1):
+            k.append(f'o_{i}')
+        for key in (k + list(self.buffers.keys())):
             assert key in transitions, "key %s missing from transitions" % key
 
         return transitions
@@ -68,7 +74,7 @@ class ReplayBuffer:
         batch_size = batch_sizes[0]
 
         with self.lock:
-            idxs = self._get_storage_idx(batch_size)  #use ordered idx get lower performance
+            idxs = self._get_storage_idx(batch_size)  # use ordered idx get lower performance
 
             # load inputs into buffers
             for key in episode_batch.keys():
@@ -98,32 +104,32 @@ class ReplayBuffer:
 
     # if full, insert randomly
     def _get_storage_idx(self, inc=None):
-        inc = inc or 1   # size increment
+        inc = inc or 1  # size increment
         assert inc <= self.size, "Batch committed to replay is too large!"
         # go consecutively until you hit the end, and then go randomly.
-        if self.current_size+inc <= self.size:
-            idx = np.arange(self.current_size, self.current_size+inc)
+        if self.current_size + inc <= self.size:
+            idx = np.arange(self.current_size, self.current_size + inc)
         elif self.current_size < self.size:
             overflow = inc - (self.size - self.current_size)
             idx_a = np.arange(self.current_size, self.size)
-            idx_b = np.random.randint(0, self.current_size, overflow) 
+            idx_b = np.random.randint(0, self.current_size, overflow)
             idx = np.concatenate([idx_a, idx_b])
         else:
             idx = np.random.randint(0, self.size, inc)
 
         # update replay size
-        self.current_size = min(self.size, self.current_size+inc)
+        self.current_size = min(self.size, self.current_size + inc)
 
         if inc == 1:
             idx = idx[0]
         return idx
-    
+
     # if full, insert in order
     def _get_ordered_storage_idx(self, inc=None):
-        inc = inc or 1   # size increment
+        inc = inc or 1  # size increment
         assert inc <= self.size, "Batch committed to replay is too large!"
 
-        if self.point+inc <= self.size - 1:
+        if self.point + inc <= self.size - 1:
             idx = np.arange(self.point, self.point + inc)
         else:
             overflow = inc - (self.size - self.point)
@@ -135,24 +141,25 @@ class ReplayBuffer:
 
         # update replay size, don't add when it already surpass self.size
         if self.current_size < self.size:
-            self.current_size = min(self.size, self.current_size+inc)
+            self.current_size = min(self.size, self.current_size + inc)
 
         if inc == 1:
             idx = idx[0]
         return idx
 
-        
+
 class SimpleReplayBuffer:
-    def __init__(self, size, state_dim, goal_dim, action_dim): 
+    def __init__(self, size, state_dim, goal_dim, action_dim, n):
         """Creates a simple replay buffer.
         """
         self.max_size = size
         self.buffers = {}
         self.buffers['o'] = np.empty((self.max_size, state_dim))
-        self.buffers['o_2'] = np.empty((self.max_size, state_dim))
+        for i in range(2, (n + 2)):
+            self.buffers[f'o_{i}'] = np.empty((self.max_size, state_dim))
+            self.buffers[f'ag_{i}'] = np.empty((self.max_size, goal_dim))
         self.buffers['g'] = np.empty((self.max_size, goal_dim))
         self.buffers['ag'] = np.empty((self.max_size, goal_dim))
-        self.buffers['ag_2'] = np.empty((self.max_size, goal_dim))
         self.buffers['r'] = np.empty((self.max_size, 1))
         self.buffers['u'] = np.empty((self.max_size, action_dim))
 
@@ -179,23 +186,22 @@ class SimpleReplayBuffer:
         batch_sizes = [len(transitions[key]) for key in transitions.keys()]
         assert np.all(np.array(batch_sizes) == batch_sizes[0])
         batch_size = batch_sizes[0]
-        idxs = self._get_ordered_storage_idx(batch_size)  #use ordered idx get lower performance
+        idxs = self._get_ordered_storage_idx(batch_size)  # use ordered idx get lower performance
 
         # load inputs into buffers
         for key in transitions.keys():
             if key in self.buffers:
                 self.buffers[key][idxs] = transitions[key]
 
-
     def clear_buffer(self):
         self.current_size = 0
-    
+
     # if full, insert in order
     def _get_ordered_storage_idx(self, inc=None):
-        inc = inc or 1   # size increment
+        inc = inc or 1  # size increment
         assert inc <= self.max_size, "Batch committed to replay is too large!"
 
-        if self.point+inc <= self.max_size - 1:
+        if self.point + inc <= self.max_size - 1:
             idx = np.arange(self.point, self.point + inc)
         else:
             overflow = inc - (self.max_size - self.point)
@@ -207,13 +213,17 @@ class SimpleReplayBuffer:
 
         # update replay size, don't add when it already surpass self.max_size
         if self.current_size < self.max_size:
-            self.current_size = min(self.max_size, self.current_size+inc)
+            self.current_size = min(self.max_size, self.current_size + inc)
 
         if inc == 1:
             idx = idx[0]
         return idx
+
+
 if __name__ == "__main__":
-    buffer_shapes = {'a':(2, 1)}
+    buffer_shapes = {'a': (2, 1)}
     buffer = ReplayBuffer(buffer_shapes, 10, 2, None)
-    buffer.store_episode({'a':np.random.random((1,2,1))})
-    import pdb; pdb.set_trace()
+    buffer.store_episode({'a': np.random.random((1, 2, 1))})
+    import pdb;
+
+    pdb.set_trace()
