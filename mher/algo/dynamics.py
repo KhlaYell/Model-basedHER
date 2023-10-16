@@ -8,8 +8,7 @@ from mher.algo.normalizer import NormalizerNumpy
 
 
 def nn(input, layers_sizes, reuse=None, flatten=False, use_layer_norm=False, name=""):
-    """Creates a simple neural network
-    """
+
     for i, size in enumerate(layers_sizes):
         activation = tf.nn.relu if i < len(layers_sizes) - 1 else None
         norm = tf.contrib.layers.layer_norm if i < len(layers_sizes) - 1 else None
