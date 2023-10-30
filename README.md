@@ -58,3 +58,21 @@ Model-based Value Expansion(MVE):
 ```bash
 python -m mher.run  --env=FetchReach-v1  --num_epoch 30 --num_env 1 --mode mbpo  --n_step 5
 ```
+
+## Contribution
+Environments: Point2DLargeEnv-v1, Point2D-FourRoom-v1, FetchReach-v1, Reacher-v2, SawyerDoor-v0.
+
+LSTM:
+```bash
+python -m  mher.run --env=Point2DLargeEnv-v1 --num_epoch 30 --num_env 1  --n_step 5 --mode dynamic --method lstm --nt 3 --alpha 3 --mb_relabeling_ratio 0.8 --log_path=~/logs/point/ --save_path=~/logs/point/
+```
+
+Multiple Next State:
+```bash
+python -m  mher.run --env=Point2DLargeEnv-v1 --num_epoch 30 --num_env 1  --n_step 5 --mode dynamic --method avg --nt 5 --alpha 3 --mb_relabeling_ratio 0.8 --log_path=~/logs/point/ --save_path=~/logs/point/
+```
+
+Multi-step:
+```bash
+python -m  mher.run --env=Point2DLargeEnv-v1 --num_epoch 30 --num_env 1  --n_step 5 --mode dynamic --method multi --nt 5 --alpha 3 --mb_relabeling_ratio 0.8 --log_path=~/logs/point/ --save_path=~/logs/point/
+```
